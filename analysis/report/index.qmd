@@ -4,7 +4,7 @@ subtitle: "A comprehensive regression analysis using the Palmer Penguins dataset
 author: "RG Thomas"
 date: "2025-01-01"
 document-type: "blog"
-draft: true
+draft: false
 categories: [R Programming, Data Science, Statistical Computing, Regression
   Analysis, Data Visualization, Biostatistics]
 description: "A comprehensive regression analysis exploring morphometric
