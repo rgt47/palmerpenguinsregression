@@ -1,17 +1,20 @@
 ---
 title: "Predictive Modeling of Penguin Body Mass"
-subtitle: "A comprehensive regression analysis using the Palmer Penguins dataset"
-author: "RG Thomas"
+subtitle: >
+  Building regression models step by step with the
+  Palmer Penguins dataset
+author: "Ronald G. Thomas"
 date: "2025-01-01"
 document-type: "blog"
 draft: false
-categories: [R Programming, Data Science, Statistical Computing, Regression
-  Analysis, Data Visualization, Biostatistics]
-description: "A comprehensive regression analysis exploring morphometric
-  relationships that predict body mass in Palmer penguins, featuring multiple
-  modeling approaches, advanced visualization techniques, and thorough model
-  validation"
-image: "featured-image.png"
+categories: [R Programming, Statistical Computing]
+description: >
+  I did not really know how much species identity
+  shapes morphometric relationships until I built
+  regression models on the Palmer Penguins dataset
+  and watched Simpson's Paradox reverse a correlation
+  right in front of me.
+image: "media/images/hero.jpg"
 execute:
   echo: true
   warning: false
@@ -22,49 +25,95 @@ format:
     code-tools: false
 ---
 
-![Palmer penguins in their Antarctic habitat](featured-image.png)
+![Palmer penguins in their Antarctic habitat](media/images/hero.jpg){.img-fluid width=80%}
+
+*Penguins at Palmer Station, Antarctica.*
 
 # Introduction
 
-The Palmer Penguins dataset has become a beloved alternative to the iris
-dataset for teaching statistical concepts and data science workflows. Collected
-by Dr. Kristen Gorman at Palmer Station Antarctica, this dataset provides
-morphometric measurements for three penguin species: Adelie (*Pygoscelis
-adeliae*), Chinstrap (*Pygoscelis antarcticus*), and Gentoo (*Pygoscelis
-papua*).
+I did not really know how dramatically a single
+confounding variable could flip a statistical
+relationship until I sat down with the Palmer Penguins
+dataset and tried to predict body mass from bill
+measurements. The overall correlation between bill
+depth and body mass looked negative, but once I
+separated the data by species, every single
+within-species relationship turned positive. That was
+my first direct encounter with Simpson's Paradox in
+real data.
 
-Understanding the relationships between morphometric measurements is important
-for Antarctic ecology research, as body mass serves as a key indicator of
-penguin health, reproductive success, and population dynamics. With climate
-change affecting Antarctic ecosystems, accurate predictive models of penguin
-body mass could inform conservation strategies and long-term monitoring
-programs (Gorman et al., 2014).
+The Palmer Penguins dataset, collected by Dr. Kristen
+Gorman at Palmer Station Antarctica, provides
+morphometric measurements for three penguin species:
+Adelie (*Pygoscelis adeliae*), Chinstrap (*Pygoscelis
+antarcticus*), and Gentoo (*Pygoscelis papua*). Body
+mass serves as a key indicator of penguin health,
+reproductive success, and population dynamics, so
+accurate predictive models carry genuine conservation
+value (Gorman et al., 2014).
 
-This analysis synthesizes approaches from several sources: the tidymodels
-workflow demonstrated by Julia Silge in her TidyTuesday screencast, the
-advanced ggplot2 visualization techniques from Cedric Scherer, and the
-classification and regression tutorials published on R-bloggers. The goal is to
-demonstrate both rigorous statistical modeling and effective visual
-communication of results.
+This post walks through the full regression workflow I
+followed: from exploratory analysis to tidymodels
+cross-validation, from simple linear regression to
+species-aware models with interaction terms. I found
+that the journey taught me as much about confounding
+and model selection as it did about penguins.
 
-By the end of this post, you will be able to:
+## Motivations
 
-- Build and validate multiple regression models for continuous prediction
-- Apply the tidymodels framework for systematic model comparison
-- Create publication-quality visualizations following modern data visualization
-  principles
-- Implement proper model validation techniques including cross-validation
-- Interpret regression coefficients in the context of biological relationships
+- I wanted a concrete example of Simpson's Paradox
+  that I could see in scatter plots rather than just
+  read about in textbooks.
+- I was curious whether adding species as a covariate
+  would meaningfully improve a regression model or
+  just add complexity.
+- I needed practice with the tidymodels framework for
+  systematic model comparison and cross-validation.
+- I wanted to understand when interaction terms
+  justify their added complexity and when a simpler
+  additive model suffices.
+- I was interested in learning how to create
+  publication-quality coefficient plots and diagnostic
+  visualizations.
+
+## Objectives
+
+1. Build and validate multiple regression models for
+   predicting penguin body mass from morphometric
+   measurements.
+2. Demonstrate Simpson's Paradox with real data and
+   show how species identity reverses the bill
+   depth-body mass correlation.
+3. Compare linear regression and regularized
+   regression (elastic net) using the tidymodels
+   framework with 10-fold cross-validation.
+4. Create publication-quality visualizations including
+   coefficient plots, partial regression plots, and
+   diagnostic panels.
+
+I am documenting my learning process here. If you spot
+errors or have better approaches, please let me know.
+
+![Antarctic research landscape](media/images/ambiance1.jpg){.img-fluid}
+
+*Setting the scene for Antarctic data exploration.*
 
 # Prerequisites and Setup
+
+**Background:** This post assumes familiarity with
+basic R syntax, the tidyverse, and an introductory
+understanding of linear regression (what R-squared
+means, what a residual is).
 
 **Required Packages:**
 
 ```{r}
 #| eval: false
-install.packages(c("palmerpenguins", "tidyverse", "tidymodels", "broom",
-                   "car", "corrplot", "GGally", "patchwork", "ggridges",
-                   "ggdist"))
+install.packages(
+  c("palmerpenguins", "tidyverse", "tidymodels",
+    "broom", "car", "corrplot", "GGally",
+    "patchwork", "lmtest")
+)
 ```
 
 **Load Libraries:**
@@ -81,190 +130,305 @@ library(patchwork)
 
 theme_set(theme_minimal(base_size = 12))
 
-# Define color palette for species (inspired by Cedric Scherer's approach)
-species_colors <- c("Adelie" = "#FF6B35", "Chinstrap" = "#7B68EE",
-                    "Gentoo" = "#2E8B57")
+species_colors <- c(
+  "Adelie" = "#FF6B35",
+  "Chinstrap" = "#7B68EE",
+  "Gentoo" = "#2E8B57"
+)
 ```
 
-**Explore the Dataset:**
+# What is Regression Modeling?
+
+Regression modeling is a way to express the
+relationship between a response variable (here, body
+mass) and one or more predictor variables (here, bill
+length, bill depth, flipper length, and species). In
+simple terms, a regression model draws the best
+straight line through a cloud of points, and the
+R-squared value tells you what fraction of the scatter
+that line explains.
+
+The key idea I found useful is that regression
+coefficients are conditional: they describe the
+relationship between a predictor and the response
+*after accounting for everything else in the model*.
+That distinction matters enormously when confounding
+variables like species are in play.
+
+# Getting Started: Initial Exploration
+
+Before fitting any models, I explored the data to
+understand distributions and spot potential issues.
 
 ```{r}
 data(penguins)
 glimpse(penguins)
 
 penguins |>
-  summarise(across(everything(), ~sum(is.na(.)))) |>
-  pivot_longer(everything(), names_to = "variable", values_to = "missing") |>
+  summarise(
+    across(everything(), ~sum(is.na(.)))
+  ) |>
+  pivot_longer(
+    everything(),
+    names_to = "variable",
+    values_to = "missing"
+  ) |>
   filter(missing > 0)
 
 penguins_clean <- penguins |>
   drop_na()
 
-cat("Dataset dimensions after removing missing values:",
-    nrow(penguins_clean), "rows and", ncol(penguins_clean), "columns\n")
+cat(
+  "Dataset dimensions after removing NAs:",
+  nrow(penguins_clean), "rows and",
+  ncol(penguins_clean), "columns\n"
+)
 ```
-
-# Exploratory Data Analysis
 
 ## Univariate Distributions
 
-Before modeling, we examine the distribution of our target variable and key
-predictors. Following visualization principles articulated by Cedric Scherer,
-we combine multiple plot types to provide comprehensive views of the data.
+I found that plotting histograms and boxplots
+side-by-side by species immediately reveals the
+structure in the data.
 
 ```{r}
 #| fig-width: 10
 #| fig-height: 8
 
-p1 <- ggplot(penguins_clean, aes(x = body_mass_g, fill = species)) +
-  geom_histogram(bins = 30, alpha = 0.7, position = "identity") +
+p1 <- ggplot(
+  penguins_clean,
+  aes(x = body_mass_g, fill = species)
+) +
+  geom_histogram(
+    bins = 30, alpha = 0.7,
+    position = "identity"
+  ) +
   scale_fill_manual(values = species_colors) +
-  labs(title = "Distribution of Body Mass by Species",
-       x = "Body Mass (g)", y = "Count") +
+  labs(
+    title = "Distribution of Body Mass by Species",
+    x = "Body Mass (g)", y = "Count"
+  ) +
   theme(legend.position = "none")
 
-p2 <- ggplot(penguins_clean, aes(x = body_mass_g, y = species, fill = species)) +
+p2 <- ggplot(
+  penguins_clean,
+  aes(x = body_mass_g, y = species,
+      fill = species)
+) +
   geom_boxplot(alpha = 0.7) +
   scale_fill_manual(values = species_colors) +
   labs(x = "Body Mass (g)", y = NULL) +
   theme(legend.position = "none")
 
-p3 <- ggplot(penguins_clean, aes(x = flipper_length_mm, fill = species)) +
-  geom_histogram(bins = 30, alpha = 0.7, position = "identity") +
+p3 <- ggplot(
+  penguins_clean,
+  aes(x = flipper_length_mm, fill = species)
+) +
+  geom_histogram(
+    bins = 30, alpha = 0.7,
+    position = "identity"
+  ) +
   scale_fill_manual(values = species_colors) +
-  labs(title = "Distribution of Flipper Length by Species",
-       x = "Flipper Length (mm)", y = "Count") +
+  labs(
+    title = "Flipper Length by Species",
+    x = "Flipper Length (mm)", y = "Count"
+  ) +
   theme(legend.position = "none")
 
-p4 <- ggplot(penguins_clean, aes(x = flipper_length_mm, y = species,
-                                  fill = species)) +
+p4 <- ggplot(
+  penguins_clean,
+  aes(x = flipper_length_mm, y = species,
+      fill = species)
+) +
   geom_boxplot(alpha = 0.7) +
   scale_fill_manual(values = species_colors) +
   labs(x = "Flipper Length (mm)", y = NULL)
 
 (p1 + p2) / (p3 + p4) +
-  plot_annotation(title = "Morphometric Distributions Across Penguin Species")
+  plot_annotation(
+    title = paste(
+      "Morphometric Distributions",
+      "Across Penguin Species"
+    )
+  )
 ```
 
-The distributions reveal clear species-level differences. Gentoo penguins
-exhibit the largest body mass and flipper length, followed by Chinstrap and
-Adelie. These species-level patterns suggest that any predictive model should
-account for species identity.
+The distributions reveal clear species-level
+differences. Gentoo penguins exhibit the largest body
+mass and flipper length, followed by Chinstrap and
+Adelie. These patterns told me early on that any
+predictive model should account for species identity.
 
 ## Correlation Analysis
 
-Understanding the correlation structure informs our modeling approach and helps
-identify potential multicollinearity issues:
+Understanding the correlation structure informs model
+building and helps flag multicollinearity:
 
 ```{r}
 #| fig-width: 8
 #| fig-height: 6
 
 numeric_vars <- penguins_clean |>
-  select(bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g)
+  select(
+    bill_length_mm, bill_depth_mm,
+    flipper_length_mm, body_mass_g
+  )
 
 correlation_matrix <- cor(numeric_vars)
 
-corrplot(correlation_matrix, method = "color", type = "upper",
-         order = "hclust", tl.cex = 0.9, tl.col = "black",
-         addCoef.col = "black", number.cex = 0.8,
-         col = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100))
+corrplot(
+  correlation_matrix,
+  method = "color",
+  type = "upper",
+  order = "hclust",
+  tl.cex = 0.9,
+  tl.col = "black",
+  addCoef.col = "black",
+  number.cex = 0.8,
+  col = colorRampPalette(
+    c("#2166AC", "white", "#B2182B")
+  )(100)
+)
 ```
 
-Flipper length shows the strongest correlation with body mass (r = 0.87),
-followed by bill length (r = 0.60). Bill depth shows a weaker positive
-correlation (r = 0.43). The strong correlation between flipper length and body
-mass is consistent with allometric scaling relationships in vertebrates.
+Flipper length shows the strongest correlation with
+body mass (r = 0.87), followed by bill length
+(r = 0.60). Bill depth shows a weaker positive
+correlation (r = 0.43). The strong flipper-body mass
+correlation is consistent with allometric scaling
+relationships in vertebrates.
 
 ## Simpson's Paradox: A Cautionary Tale
 
-The Palmer Penguins dataset provides an excellent example of Simpson's Paradox.
-As noted by Pearl (2014), this phenomenon occurs when an association between
-two variables reverses sign when conditioned on a third variable.
+This is the finding that surprised me most. The
+overall correlation between bill depth and body mass
+appears negative, but within each species the
+relationship is positive. Pearl (2014) calls this
+Simpson's Paradox.
 
 ```{r}
 #| fig-width: 10
 #| fig-height: 5
 
-# Overall relationship
-p_overall <- ggplot(penguins_clean, aes(x = bill_depth_mm, y = body_mass_g)) +
+p_overall <- ggplot(
+  penguins_clean,
+  aes(x = bill_depth_mm, y = body_mass_g)
+) +
   geom_point(alpha = 0.5) +
-  geom_smooth(method = "lm", se = TRUE, color = "black") +
-  labs(title = "Overall: Negative Relationship",
-       subtitle = paste("r =", round(cor(penguins_clean$bill_depth_mm,
-                                         penguins_clean$body_mass_g), 2)),
-       x = "Bill Depth (mm)", y = "Body Mass (g)")
+  geom_smooth(
+    method = "lm", se = TRUE, color = "black"
+  ) +
+  labs(
+    title = "Overall: Negative Relationship",
+    subtitle = paste(
+      "r =",
+      round(
+        cor(penguins_clean$bill_depth_mm,
+            penguins_clean$body_mass_g), 2
+      )
+    ),
+    x = "Bill Depth (mm)",
+    y = "Body Mass (g)"
+  )
 
-# Relationship within species
-p_species <- ggplot(penguins_clean, aes(x = bill_depth_mm, y = body_mass_g,
-                                         color = species)) +
+p_species <- ggplot(
+  penguins_clean,
+  aes(x = bill_depth_mm, y = body_mass_g,
+      color = species)
+) +
   geom_point(alpha = 0.7) +
   geom_smooth(method = "lm", se = TRUE) +
   scale_color_manual(values = species_colors) +
-  labs(title = "Within Species: Positive Relationships",
-       x = "Bill Depth (mm)", y = "Body Mass (g)") +
+  labs(
+    title = "Within Species: Positive",
+    x = "Bill Depth (mm)",
+    y = "Body Mass (g)"
+  ) +
   theme(legend.position = "bottom")
 
 p_overall + p_species
 ```
 
-The overall correlation between bill depth and body mass appears negative, but
-within each species the relationship is positive. This reversal occurs because
-Gentoo penguins have larger bodies but shallower bills than Adelie penguins,
-and species acts as a confounding variable. This example underscores the
-importance of stratified analysis and the inclusion of relevant covariates
-in regression models.
+The reversal occurs because Gentoo penguins have
+larger bodies but shallower bills than Adelie
+penguins, and species acts as a confounding variable.
+I found this example more instructive than any
+textbook explanation of confounding I had encountered.
 
 ## Species-Specific Patterns
 
-A comprehensive view of all pairwise relationships by species:
+A comprehensive view of all pairwise relationships by
+species:
 
 ```{r}
 #| fig-width: 10
 #| fig-height: 10
 
-ggpairs(penguins_clean,
-        columns = c("bill_length_mm", "bill_depth_mm", "flipper_length_mm",
-                    "body_mass_g"),
-        aes(color = species, alpha = 0.7),
-        lower = list(continuous = "smooth_loess"),
-        upper = list(continuous = "cor"),
-        diag = list(continuous = "densityDiag")) +
+ggpairs(
+  penguins_clean,
+  columns = c(
+    "bill_length_mm", "bill_depth_mm",
+    "flipper_length_mm", "body_mass_g"
+  ),
+  aes(color = species, alpha = 0.7),
+  lower = list(continuous = "smooth_loess"),
+  upper = list(continuous = "cor"),
+  diag = list(continuous = "densityDiag")
+) +
   scale_color_manual(values = species_colors) +
   scale_fill_manual(values = species_colors) +
   theme_minimal()
 ```
 
-# Model Development
+![Penguin research in progress](media/images/ambiance2.jpg){.img-fluid}
+
+*Midway through the analysis -- time for a closer
+look at the models.*
+
+# Building a Model
 
 ## Simple Linear Regression
 
-We begin with simple linear models to establish baseline relationships. The
-flipper length serves as our primary predictor given its strong correlation
-with body mass:
+I started with the simplest possible model: flipper
+length as the sole predictor, given its strong
+correlation with body mass.
 
 ```{r}
-model_simple <- lm(body_mass_g ~ flipper_length_mm, data = penguins_clean)
+model_simple <- lm(
+  body_mass_g ~ flipper_length_mm,
+  data = penguins_clean
+)
 
 summary(model_simple)
 
 simple_metrics <- glance(model_simple)
-cat("\nSimple Model R-squared:", round(simple_metrics$r.squared, 3), "\n")
-cat("Simple Model RMSE:",
-    round(sqrt(mean(model_simple$residuals^2)), 1), "g\n")
+cat(
+  "\nSimple Model R-squared:",
+  round(simple_metrics$r.squared, 3), "\n"
+)
+cat(
+  "Simple Model RMSE:",
+  round(sqrt(mean(model_simple$residuals^2)), 1),
+  "g\n"
+)
 ```
 
-The simple model explains approximately 76% of the variance in body mass, with
-each millimeter increase in flipper length associated with a 49.7g increase in
-body mass.
+The simple model explains approximately 76% of the
+variance in body mass, with each millimeter increase
+in flipper length associated with a 49.7g increase in
+body mass. Not bad for one predictor, but I suspected
+species would matter.
 
 ## Multiple Linear Regression
 
-Incorporating additional morphometric predictors:
+Adding the remaining morphometric predictors:
 
 ```{r}
-model_multiple <- lm(body_mass_g ~ bill_length_mm + bill_depth_mm +
-                       flipper_length_mm, data = penguins_clean)
+model_multiple <- lm(
+  body_mass_g ~ bill_length_mm +
+    bill_depth_mm + flipper_length_mm,
+  data = penguins_clean
+)
 
 summary(model_multiple)
 
@@ -273,67 +437,148 @@ cat("\nVariance Inflation Factors:\n")
 print(round(vif_values, 2))
 ```
 
-The VIF values are all below 5, indicating that multicollinearity is not a
-serious concern for this model.
+The VIF values are all below 5, indicating that
+multicollinearity is not a serious concern. I found
+it reassuring to check this before adding more terms.
 
-## Species-Aware Models
+## Species-Aware Model
 
-Including species as a factor should improve predictions by accounting for
-the systematic differences observed in our exploratory analysis:
+Including species as a factor should improve
+predictions by accounting for the systematic
+differences I saw in the exploratory analysis:
 
 ```{r}
-model_species <- lm(body_mass_g ~ bill_length_mm + bill_depth_mm +
-                      flipper_length_mm + species, data = penguins_clean)
+model_species <- lm(
+  body_mass_g ~ bill_length_mm +
+    bill_depth_mm + flipper_length_mm + species,
+  data = penguins_clean
+)
 
 summary(model_species)
 ```
 
-The species-aware model shows substantial improvement. All morphometric
-coefficients change in magnitude and direction when species is included,
-consistent with the Simpson's Paradox we observed earlier. Bill depth, which
-appeared to have a negative coefficient in the multiple regression model,
-now shows a positive coefficient within the species-stratified framework.
+This is where things got interesting. All morphometric
+coefficients changed in magnitude and direction when
+species was included, consistent with the Simpson's
+Paradox I observed earlier. Bill depth, which appeared
+to have a negative coefficient in the multiple
+regression, now shows a positive coefficient within
+the species-stratified framework.
 
 ## Interaction Effects
 
-We explore whether the relationships between morphometric variables and body
-mass differ across species:
+I explored whether the relationships between
+morphometric variables and body mass differ across
+species:
 
 ```{r}
-model_interactions <- lm(body_mass_g ~ (bill_length_mm + bill_depth_mm +
-                           flipper_length_mm) * species, data = penguins_clean)
+model_interactions <- lm(
+  body_mass_g ~ (bill_length_mm +
+    bill_depth_mm + flipper_length_mm) * species,
+  data = penguins_clean
+)
 
 summary(model_interactions)
 
-# Compare nested models
 anova(model_species, model_interactions)
 ```
 
+## Making Predictions
+
+To see how the species-aware model performs in
+practice, I generated predictions with 95% prediction
+intervals:
+
+```{r}
+#| fig-width: 8
+#| fig-height: 6
+
+predictions <- predict(
+  model_species,
+  interval = "prediction",
+  level = 0.95
+)
+
+results_df <- penguins_clean |>
+  mutate(
+    predicted = predictions[, "fit"],
+    lower_pi = predictions[, "lwr"],
+    upper_pi = predictions[, "upr"],
+    residual = body_mass_g - predicted
+  )
+
+ggplot(
+  results_df,
+  aes(x = predicted, y = body_mass_g)
+) +
+  geom_point(
+    aes(color = species),
+    alpha = 0.7, size = 2
+  ) +
+  geom_abline(
+    slope = 1, intercept = 0,
+    linetype = "dashed",
+    color = "gray40", linewidth = 1
+  ) +
+  scale_color_manual(values = species_colors) +
+  labs(
+    title = "Predicted vs Actual Body Mass",
+    subtitle = paste(
+      "Species-aware model, R-squared =",
+      round(
+        summary(model_species)$r.squared, 3
+      )
+    ),
+    x = "Predicted Body Mass (g)",
+    y = "Actual Body Mass (g)",
+    color = "Species"
+  ) +
+  theme(legend.position = "bottom") +
+  coord_equal()
+```
+
+The points cluster tightly around the identity line,
+and I was pleased to see that the model performs well
+across all three species rather than fitting one
+species at the expense of the others.
+
 # The tidymodels Approach
 
-Following the workflow demonstrated by Julia Silge in her TidyTuesday
-screencast on Palmer Penguins, we use the tidymodels framework for systematic
-model comparison and validation.
+Following the workflow demonstrated by Julia Silge in
+her TidyTuesday screencast on Palmer Penguins, I used
+the tidymodels framework for systematic model
+comparison and validation.
 
 ## Data Splitting
 
 ```{r}
 set.seed(123)
 
-penguin_split <- initial_split(penguins_clean, prop = 0.75, strata = species)
+penguin_split <- initial_split(
+  penguins_clean, prop = 0.75, strata = species
+)
 penguin_train <- training(penguin_split)
 penguin_test <- testing(penguin_split)
 
-cat("Training set:", nrow(penguin_train), "observations\n")
-cat("Test set:", nrow(penguin_test), "observations\n")
+cat(
+  "Training set:",
+  nrow(penguin_train), "observations\n"
+)
+cat(
+  "Test set:",
+  nrow(penguin_test), "observations\n"
+)
 ```
 
 ## Recipe Specification
 
 ```{r}
-penguin_recipe <- recipe(body_mass_g ~ bill_length_mm + bill_depth_mm +
-                           flipper_length_mm + species + sex + island,
-                         data = penguin_train) |>
+penguin_recipe <- recipe(
+  body_mass_g ~ bill_length_mm +
+    bill_depth_mm + flipper_length_mm +
+    species + sex + island,
+  data = penguin_train
+) |>
   step_dummy(all_nominal_predictors()) |>
   step_normalize(all_numeric_predictors())
 
@@ -342,13 +587,17 @@ penguin_recipe
 
 ## Model Specifications
 
-We compare linear regression with regularized regression (elastic net):
+I compared linear regression with regularized
+regression (elastic net) to see whether penalizing
+coefficient size improves out-of-sample performance:
 
 ```{r}
 lm_spec <- linear_reg() |>
   set_engine("lm")
 
-glmnet_spec <- linear_reg(penalty = tune(), mixture = tune()) |>
+glmnet_spec <- linear_reg(
+  penalty = tune(), mixture = tune()
+) |>
   set_engine("glmnet")
 ```
 
@@ -368,7 +617,9 @@ glmnet_workflow <- workflow() |>
 
 ```{r}
 set.seed(234)
-penguin_folds <- vfold_cv(penguin_train, v = 10, strata = species)
+penguin_folds <- vfold_cv(
+  penguin_train, v = 10, strata = species
+)
 ```
 
 ## Linear Regression Results
@@ -405,20 +656,27 @@ show_best(glmnet_results, metric = "rmse", n = 5)
 ## Final Model Selection
 
 ```{r}
-best_glmnet <- select_best(glmnet_results, metric = "rmse")
+best_glmnet <- select_best(
+  glmnet_results, metric = "rmse"
+)
 
-final_workflow <- finalize_workflow(glmnet_workflow, best_glmnet)
+final_workflow <- finalize_workflow(
+  glmnet_workflow, best_glmnet
+)
 
-final_fit <- last_fit(final_workflow, penguin_split)
+final_fit <- last_fit(
+  final_workflow, penguin_split
+)
 
 collect_metrics(final_fit)
 ```
 
-# Model Diagnostics
+# Checking Our Work
 
 ## Residual Analysis
 
-We examine the final species-aware linear model for assumption violations:
+I examined the species-aware linear model for
+assumption violations:
 
 ```{r}
 #| fig-width: 10
@@ -431,63 +689,57 @@ par(mfrow = c(1, 1))
 
 The diagnostic plots reveal:
 
-- **Residuals vs Fitted**: No clear pattern, suggesting linearity assumption
-  holds
-- **Q-Q Plot**: Residuals approximately follow normal distribution with slight
-  deviation in tails
-- **Scale-Location**: Relatively constant spread, homoscedasticity appears
-  reasonable
-- **Residuals vs Leverage**: No high-leverage outliers with large residuals
+- **Residuals vs Fitted**: No clear pattern,
+  suggesting the linearity assumption holds.
+- **Q-Q Plot**: Residuals approximately follow a
+  normal distribution with slight deviation in tails.
+- **Scale-Location**: Relatively constant spread;
+  homoscedasticity appears reasonable.
+- **Residuals vs Leverage**: No high-leverage
+  outliers with large residuals.
 
 ## Formal Diagnostic Tests
 
 ```{r}
-# Shapiro-Wilk normality test
-shapiro_test <- shapiro.test(residuals(model_species))
-cat("Shapiro-Wilk test p-value:", round(shapiro_test$p.value, 4), "\n")
+shapiro_test <- shapiro.test(
+  residuals(model_species)
+)
+cat(
+  "Shapiro-Wilk test p-value:",
+  round(shapiro_test$p.value, 4), "\n"
+)
 
-# Breusch-Pagan heteroscedasticity test
 library(lmtest)
 bp_test <- bptest(model_species)
-cat("Breusch-Pagan test p-value:", round(bp_test$p.value, 4), "\n")
+cat(
+  "Breusch-Pagan test p-value:",
+  round(bp_test$p.value, 4), "\n"
+)
 ```
 
-## Prediction Accuracy Visualization
+## Things to Watch Out For
 
-```{r}
-#| fig-width: 8
-#| fig-height: 6
+1. **Simpson's Paradox is easy to miss.** I found
+   that pooling data across species produced
+   misleading coefficient signs. Always check
+   within-group relationships before interpreting
+   aggregate patterns.
+2. **VIF alone does not tell the full story.** Even
+   with low VIF values, adding species flipped the
+   sign of the bill depth coefficient.
+3. **Interaction terms add complexity fast.** The
+   interaction model added six parameters for marginal
+   improvement in adjusted R-squared (0.868 to 0.872).
+4. **Stratified splitting matters.** Without
+   `strata = species` in `initial_split()`, the
+   training set could under-represent Chinstrap
+   penguins (the smallest group).
+5. **Residual normality tests can be overly
+   sensitive.** With 333 observations, the
+   Shapiro-Wilk test may flag small deviations that
+   have little practical effect on inference.
 
-predictions <- predict(model_species, interval = "prediction", level = 0.95)
-
-results_df <- penguins_clean |>
-  mutate(
-    predicted = predictions[, "fit"],
-    lower_pi = predictions[, "lwr"],
-    upper_pi = predictions[, "upr"],
-    residual = body_mass_g - predicted
-  )
-
-ggplot(results_df, aes(x = predicted, y = body_mass_g)) +
-  geom_point(aes(color = species), alpha = 0.7, size = 2) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray40",
-              linewidth = 1) +
-  scale_color_manual(values = species_colors) +
-  labs(title = "Predicted vs Actual Body Mass",
-       subtitle = paste("Species-aware linear model, R-squared =",
-                        round(summary(model_species)$r.squared, 3)),
-       x = "Predicted Body Mass (g)",
-       y = "Actual Body Mass (g)",
-       color = "Species") +
-  theme(legend.position = "bottom") +
-  coord_equal()
-```
-
-# Advanced Visualization Techniques
-
-Following the ggplot2 techniques demonstrated by Cedric Scherer in his
-TidyTuesday submissions, we create publication-quality visualizations of
-the model results.
+# Advanced Visualizations
 
 ## Coefficient Plot
 
@@ -495,19 +747,35 @@ the model results.
 #| fig-width: 8
 #| fig-height: 5
 
-coef_df <- tidy(model_species, conf.int = TRUE) |>
+coef_df <- tidy(
+  model_species, conf.int = TRUE
+) |>
   filter(term != "(Intercept)") |>
   mutate(term = fct_reorder(term, estimate))
 
 ggplot(coef_df, aes(x = estimate, y = term)) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
-  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high),
-                 height = 0.2, color = "gray40") +
+  geom_vline(
+    xintercept = 0,
+    linetype = "dashed",
+    color = "gray50"
+  ) +
+  geom_errorbarh(
+    aes(xmin = conf.low, xmax = conf.high),
+    height = 0.2, color = "gray40"
+  ) +
   geom_point(size = 3, color = "#2E8B57") +
-  labs(title = "Regression Coefficients with 95% Confidence Intervals",
-       subtitle = "Predicting body mass from morphometric variables and species",
-       x = "Coefficient Estimate (g)",
-       y = NULL) +
+  labs(
+    title = paste(
+      "Regression Coefficients with",
+      "95% Confidence Intervals"
+    ),
+    subtitle = paste(
+      "Predicting body mass from",
+      "morphometric variables and species"
+    ),
+    x = "Coefficient Estimate (g)",
+    y = NULL
+  ) +
   theme(panel.grid.major.y = element_blank())
 ```
 
@@ -517,48 +785,72 @@ ggplot(coef_df, aes(x = estimate, y = term)) +
 #| fig-width: 10
 #| fig-height: 4
 
-# Flipper length partial relationship
-p1 <- ggplot(penguins_clean, aes(x = flipper_length_mm, y = body_mass_g)) +
-  geom_point(aes(color = species), alpha = 0.6) +
-  geom_smooth(method = "lm", se = TRUE, color = "gray30") +
+p1 <- ggplot(
+  penguins_clean,
+  aes(x = flipper_length_mm, y = body_mass_g)
+) +
+  geom_point(
+    aes(color = species), alpha = 0.6
+  ) +
+  geom_smooth(
+    method = "lm", se = TRUE,
+    color = "gray30"
+  ) +
   scale_color_manual(values = species_colors) +
-  labs(title = "Flipper Length",
-       x = "Flipper Length (mm)", y = "Body Mass (g)") +
+  labs(
+    title = "Flipper Length",
+    x = "Flipper Length (mm)",
+    y = "Body Mass (g)"
+  ) +
   theme(legend.position = "none")
 
-# Bill depth partial relationship (within species)
-p2 <- ggplot(penguins_clean, aes(x = bill_depth_mm, y = body_mass_g,
-                                  color = species)) +
+p2 <- ggplot(
+  penguins_clean,
+  aes(x = bill_depth_mm, y = body_mass_g,
+      color = species)
+) +
   geom_point(alpha = 0.6) +
   geom_smooth(method = "lm", se = TRUE) +
   scale_color_manual(values = species_colors) +
-  labs(title = "Bill Depth (by Species)",
-       x = "Bill Depth (mm)", y = "Body Mass (g)") +
+  labs(
+    title = "Bill Depth (by Species)",
+    x = "Bill Depth (mm)",
+    y = "Body Mass (g)"
+  ) +
   theme(legend.position = "none")
 
-# Bill length partial relationship
-p3 <- ggplot(penguins_clean, aes(x = bill_length_mm, y = body_mass_g,
-                                  color = species)) +
+p3 <- ggplot(
+  penguins_clean,
+  aes(x = bill_length_mm, y = body_mass_g,
+      color = species)
+) +
   geom_point(alpha = 0.6) +
   geom_smooth(method = "lm", se = TRUE) +
   scale_color_manual(values = species_colors) +
-  labs(title = "Bill Length (by Species)",
-       x = "Bill Length (mm)", y = "Body Mass (g)") +
+  labs(
+    title = "Bill Length (by Species)",
+    x = "Bill Length (mm)",
+    y = "Body Mass (g)"
+  ) +
   theme(legend.position = "bottom")
 
 p1 + p2 + p3 +
-  plot_annotation(title = "Morphometric Predictors of Body Mass")
+  plot_annotation(
+    title = "Morphometric Predictors of Body Mass"
+  )
 ```
 
-# Model Comparison Summary
+## Model Comparison Summary
 
 ```{r}
 #| fig-width: 8
 #| fig-height: 5
 
-# Collect performance metrics
 model_comparison <- tibble(
-  Model = c("Simple (Flipper)", "Multiple", "Species-Aware", "Interactions"),
+  Model = c(
+    "Simple (Flipper)", "Multiple",
+    "Species-Aware", "Interactions"
+  ),
   R_squared = c(
     summary(model_simple)$r.squared,
     summary(model_multiple)$r.squared,
@@ -580,202 +872,232 @@ model_comparison <- tibble(
 )
 
 model_comparison |>
-  mutate(across(where(is.numeric), ~round(.x, 3))) |>
-  knitr::kable(caption = "Model Performance Comparison")
+  mutate(
+    across(where(is.numeric), ~round(.x, 3))
+  ) |>
+  knitr::kable(
+    caption = "Model Performance Comparison"
+  )
 
-# Visualize comparison
 model_comparison |>
-  pivot_longer(cols = c(R_squared, RMSE), names_to = "Metric",
-               values_to = "Value") |>
-  ggplot(aes(x = fct_reorder(Model, Value), y = Value, fill = Model)) +
+  pivot_longer(
+    cols = c(R_squared, RMSE),
+    names_to = "Metric",
+    values_to = "Value"
+  ) |>
+  ggplot(
+    aes(x = fct_reorder(Model, Value),
+        y = Value, fill = Model)
+  ) +
   geom_col() +
   facet_wrap(~Metric, scales = "free") +
-  labs(title = "Model Performance Comparison",
-       x = NULL, y = "Value") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.position = "none") +
+  labs(
+    title = "Model Performance Comparison",
+    x = NULL, y = "Value"
+  ) +
+  theme(
+    axis.text.x = element_text(
+      angle = 45, hjust = 1
+    ),
+    legend.position = "none"
+  ) +
   scale_fill_viridis_d(option = "D")
 ```
 
-# Results and Key Findings
+![Final reflections on the analysis](media/images/ambiance3.jpg){.img-fluid}
 
-Our comprehensive analysis of Palmer Penguin morphometric data reveals several
-important findings:
+*Stepping back to reflect on what the models revealed.*
 
-1. **Strong Morphometric Relationships**: Flipper length serves as the
-   strongest single predictor of body mass (R-squared = 0.76), consistent with
-   allometric scaling relationships in vertebrates.
+## Lessons Learnt
 
-2. **Species Identity Matters**: Including species dramatically improves model
-   performance. The species-aware model achieves R-squared of 0.87 compared to
-   0.76 for the simple flipper-length model. This reflects the distinct
-   morphometric profiles of each species.
+### Conceptual Understanding
 
-3. **Simpson's Paradox Demonstrated**: Bill depth shows a negative correlation
-   with body mass overall, but positive correlations within each species. This
-   illustrates the importance of considering confounding variables and
-   stratified analysis.
+- Flipper length is the strongest single predictor of
+  body mass (R-squared = 0.76), consistent with
+  allometric scaling in vertebrates.
+- Including species raises the R-squared from 0.76 to
+  0.87, confirming that species identity is a
+  first-order driver of morphometric variation.
+- Simpson's Paradox reversed the sign of the bill
+  depth coefficient: negative overall, positive within
+  each species.
+- Interaction terms yielded marginal improvement
+  (adjusted R-squared from 0.868 to 0.872), suggesting
+  the additive species-aware model captures most of the
+  relevant structure.
 
-4. **Model Complexity Trade-offs**: Adding interaction terms provides marginal
-   improvement (adjusted R-squared increases from 0.868 to 0.872) at the cost
-   of additional parameters. For most purposes, the simpler species-aware
-   additive model provides excellent predictive performance with greater
-   interpretability.
+### Technical Skills
 
-5. **Biological Interpretation**: The final model coefficients have clear
-   biological interpretations:
-   - Larger flippers indicate larger body size (positive coefficient)
-   - Within species, deeper bills predict heavier penguins (positive
-     coefficient after controlling for species)
-   - Gentoo penguins are systematically heavier than Adelie (reference) after
-     controlling for morphometry
+- I practised the full tidymodels pipeline: recipe
+  specification, workflow creation, cross-validation
+  with `vfold_cv()`, and hyperparameter tuning with
+  `tune_grid()`.
+- The `broom` package (`tidy()`, `glance()`,
+  `augment()`) made it straightforward to extract model
+  summaries into tidy data frames for plotting.
+- `corrplot` and `GGally::ggpairs()` provided quick
+  multivariate overviews that guided variable
+  selection.
+- The `car::vif()` function gave a fast check on
+  multicollinearity before building larger models.
 
-# Limitations and Considerations
+### Gotchas and Pitfalls
 
-**Sample Size**: The dataset contains 333 complete observations, adequate for
-these analyses but limiting for complex interaction models.
+- Pooling data across species without checking
+  within-group patterns led to misleading conclusions
+  about bill depth.
+- The Shapiro-Wilk normality test flagged minor tail
+  deviations that had no practical effect on model
+  predictions.
+- Forgetting to set `strata = species` in data
+  splitting could under-represent the 68 Chinstrap
+  observations in either the training or test set.
+- Using `position = "identity"` in histograms is
+  essential when comparing overlapping distributions;
+  the default stacking obscures the shape of each
+  group.
 
-**Temporal Variation**: The data spans 2007-2009 and does not account for
-potential year-to-year environmental variation.
+## Limitations
 
-**Geographic Scope**: All data comes from Palmer Station, limiting
-generalizability to other Antarctic regions.
+- The dataset contains 333 complete observations,
+  adequate for these analyses but limiting for
+  complex interaction models with many parameters.
+- Data spans 2007 to 2009 and does not account for
+  potential year-to-year environmental variation that
+  could affect body mass.
+- All data comes from Palmer Station, limiting
+  generalizability to other Antarctic regions or
+  penguin populations.
+- The regression coefficients describe associations,
+  not causal effects. Morphometric variables are
+  biologically related and may not represent
+  independent causal pathways.
+- Sex was not included in the base regression models
+  (only in the tidymodels recipe), so sexual
+  dimorphism is only partially addressed.
 
-**Causal Interpretation**: The regression coefficients describe associations,
-not causal effects. Morphometric variables are biologically related and may
-not represent independent causal pathways.
+## Opportunities for Improvement
 
-# Future Extensions
+1. **Mixed-effects models**: Account for island as a
+   random effect to improve population-level inference.
+2. **Sex-specific models**: Develop separate models
+   for males and females to address known sexual
+   dimorphism (Gorman et al., 2014).
+3. **Temporal analysis**: Incorporate year effects to
+   understand environmental influences on morphometry.
+4. **Tree-based comparison**: Compare regularized
+   regression with random forests and gradient boosting
+   to assess nonlinear relationships.
+5. **External validation**: Test model performance on
+   penguin data from other Antarctic research stations.
+6. **Bayesian regression**: Use informative priors
+   based on allometric scaling theory to improve
+   small-sample inference.
 
-This analysis could be extended in several directions:
+# Wrapping Up
 
-- **Mixed-Effects Models**: Account for island as a random effect to improve
-  population-level inference
-- **Sexual Dimorphism**: Develop sex-specific models to account for known
-  differences in penguin sexual dimorphism (Gorman et al., 2014)
-- **Temporal Analysis**: Incorporate year effects to understand environmental
-  influences on morphometry
-- **Machine Learning Comparison**: Compare regularized regression with
-  tree-based methods (random forests, gradient boosting)
-- **External Validation**: Test model performance on penguin data from other
-  Antarctic research stations
+The main finding is that a species-aware linear model
+explains 87% of the variance in penguin body mass with
+a prediction error of approximately 289 grams. That is
+a strong result for a model using only four predictors.
 
-# Conclusion
+What I learned personally is that confounding variables
+can completely reverse apparent relationships. The
+Simpson's Paradox demonstration was worth the entire
+exercise. I also gained confidence in the tidymodels
+workflow: the recipe-workflow-resample pattern felt
+systematic and reproducible once I understood the
+pieces.
 
-This comprehensive regression analysis demonstrates the value of morphometric
-measurements for predicting penguin body mass. The species-aware linear model
-provides an excellent balance of accuracy, interpretability, and biological
-relevance, achieving 87% explained variance with a prediction error of
-approximately 289 grams.
+If you are trying this yourself, my advice is to start
+with thorough exploratory analysis before fitting any
+models. The EDA phase revealed the species structure
+that turned out to be the single most important
+predictor, and it surfaced Simpson's Paradox before it
+could silently distort model coefficients.
 
-**Key takeaways:**
+**Main takeaways:**
 
-- Flipper length serves as the primary morphometric predictor of body mass
-- Species identity significantly moderates morphometric relationships
-- Simple linear models can achieve excellent performance when informed by
-  biological understanding
-- The Palmer Penguins dataset provides an effective teaching example for
-  confounding, Simpson's Paradox, and the importance of domain knowledge in
-  statistical modeling
+- Flipper length alone predicts body mass with
+  R-squared = 0.76.
+- Adding species raises R-squared to 0.87 and
+  corrects misleading coefficient signs.
+- Interaction terms provide marginal improvement
+  (adjusted R-squared 0.868 to 0.872) at the cost
+  of six additional parameters.
+- The Palmer Penguins dataset is an excellent teaching
+  tool for confounding, Simpson's Paradox, and the
+  role of domain knowledge in statistical modeling.
 
-I encourage you to adapt this analytical framework to other morphometric
-datasets and consider how domain knowledge can improve both model performance
-and interpretation.
+# See Also
 
-# References and Acknowledgments
+**Related posts:**
 
-## Academic Literature
+- Palmer Penguins Part 1: EDA and Simple Regression
+- Palmer Penguins Part 3: Cross-Validation and ML
+  Comparison
+- Palmer Penguins Part 4: Model Diagnostics
 
-- Gorman, K.B., Williams, T.D., & Fraser, W.R. (2014). Ecological sexual
-  dimorphism and environmental variability within a community of Antarctic
-  penguins (genus *Pygoscelis*). *PLOS ONE*, 9(3), e90081.
-  https://doi.org/10.1371/journal.pone.0090081
+**Key resources:**
 
-- Horst, A.M., Hill, A.P., & Gorman, K.B. (2022). Palmer Archipelago Penguins
-  Data in the palmerpenguins R Package: An alternative to Anderson's Irises.
-  *The R Journal*, 14(1), 244-254.
-  https://doi.org/10.32614/RJ-2022-020
-
-- Pearl, J. (2014). Comment: Understanding Simpson's Paradox. *The American
-  Statistician*, 68(1), 8-13.
-  https://doi.org/10.1080/00031305.2014.876829
-
-## TidyTuesday Resources
-
-- Silge, J. (2020). Get started with tidymodels and #TidyTuesday Palmer
-  penguins. Blog post and YouTube screencast.
-  https://juliasilge.com/blog/palmer-penguins/
-
-- Scherer, C. (2020). TidyTuesday 2020/31: Palmer Penguins visualization.
-  GitHub repository.
-  https://github.com/z3tt/TidyTuesday/blob/main/R/2020_31_PalmerPenguins.Rmd
-
-- R for Data Science Online Learning Community (2020). TidyTuesday Week 31.
-  https://github.com/rfordatascience/tidytuesday/tree/master/data/2020/2020-07-28
-
-## R-Bloggers Tutorials
-
-- Basic data analysis with palmerpenguins (2020).
-  https://www.r-bloggers.com/2020/07/basic-data-analysis-with-palmerpenguins/
-
-- Classification: Logistic Regression and Random Forest (2022).
-  https://www.r-bloggers.com/2022/02/classification-logistic-regression-and-random-forest/
-
-- Hyperparameter Optimization on the Palmer Penguins Data Set (2022).
-  https://www.r-bloggers.com/2022/11/hyperparameter-optimization-on-the-palmer-penguins-data-set/
-
-## Package Documentation
-
-- [palmerpenguins package](https://allisonhorst.github.io/palmerpenguins/)
+- Gorman, K.B., Williams, T.D., & Fraser, W.R.
+  (2014). Ecological sexual dimorphism and
+  environmental variability within a community of
+  Antarctic penguins (genus *Pygoscelis*). *PLOS ONE*,
+  9(3), e90081.
+  <https://doi.org/10.1371/journal.pone.0090081>
+- Horst, A.M., Hill, A.P., & Gorman, K.B. (2022).
+  Palmer Archipelago Penguins Data in the
+  palmerpenguins R Package. *The R Journal*, 14(1),
+  244-254.
+  <https://doi.org/10.32614/RJ-2022-020>
+- Silge, J. (2020). Get started with tidymodels and
+  Palmer penguins.
+  <https://juliasilge.com/blog/palmer-penguins/>
+- Scherer, C. (2020). TidyTuesday 2020/31: Palmer
+  Penguins visualization.
+  <https://github.com/z3tt/TidyTuesday>
+- [palmerpenguins package documentation](https://allisonhorst.github.io/palmerpenguins/)
 - [tidymodels framework](https://www.tidymodels.org/)
-- [ggplot2 reference](https://ggplot2.tidyverse.org/)
 
-# Reproducibility Information
+# Reproducibility
+
+**Data source:** The `palmerpenguins` R package
+(version 0.1.1), which provides the `penguins`
+dataset collected at Palmer Station, Antarctica.
+
+**Analysis pipeline:**
+
+```bash
+Rscript analysis/scripts/01_prepare_data.R
+Rscript analysis/scripts/02_fit_models.R
+Rscript analysis/scripts/03_generate_figures.R
+quarto render index.qmd
+```
+
+**Session information:**
 
 ```{r}
 #| echo: false
 sessionInfo()
 ```
 
-# Appendix: Complete Analysis Code
+# Let's Connect
 
-```{r}
-#| eval: false
-# Complete workflow for Palmer penguins regression analysis
+- **GitHub:** [rgt47](https://github.com/rgt47)
+- **Twitter/X:** [@rgt47](https://twitter.com/rgt47)
+- **LinkedIn:**
+  [Ronald Glenn Thomas](https://linkedin.com/in/rgthomaslab)
+- **Email:**
+  [rgtlab.org/contact](https://rgtlab.org/contact)
 
-library(palmerpenguins)
-library(tidyverse)
-library(tidymodels)
-library(broom)
-library(car)
+I would enjoy hearing from you if:
 
-data(penguins)
-penguins_clean <- penguins |> drop_na()
-
-# Model development
-model_simple <- lm(body_mass_g ~ flipper_length_mm, data = penguins_clean)
-
-model_species <- lm(body_mass_g ~ bill_length_mm + bill_depth_mm +
-                      flipper_length_mm + species, data = penguins_clean)
-
-# tidymodels workflow
-set.seed(123)
-penguin_split <- initial_split(penguins_clean, prop = 0.75, strata = species)
-penguin_train <- training(penguin_split)
-penguin_test <- testing(penguin_split)
-
-penguin_recipe <- recipe(body_mass_g ~ bill_length_mm + bill_depth_mm +
-                           flipper_length_mm + species + sex + island,
-                         data = penguin_train) |>
-  step_dummy(all_nominal_predictors()) |>
-  step_normalize(all_numeric_predictors())
-
-lm_workflow <- workflow() |>
-  add_recipe(penguin_recipe) |>
-  add_model(linear_reg())
-
-penguin_folds <- vfold_cv(penguin_train, v = 10, strata = species)
-
-lm_results <- fit_resamples(lm_workflow, resamples = penguin_folds)
-collect_metrics(lm_results)
-```
+- You spot an error or a better approach to any of the
+  code in this post.
+- You have suggestions for topics you would like to see
+  covered.
+- You want to discuss R programming, data science, or
+  reproducible research.
+- You have questions about anything in this tutorial.
+- You just want to say hello and connect.
