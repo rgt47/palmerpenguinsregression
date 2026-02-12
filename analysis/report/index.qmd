@@ -19,6 +19,7 @@ execute:
   echo: true
   warning: false
   message: false
+  eval: false
 format:
   html:
     code-fold: false
