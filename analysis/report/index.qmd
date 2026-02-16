@@ -7,7 +7,7 @@ author: "Ronald G. Thomas"
 date: "2025-01-01"
 document-type: "blog"
 draft: false
-categories: [R Programming, Statistical Computing]
+categories: [r, palmer-penguins, regression, data-visualization]
 description: >
   I did not really know how much species identity
   shapes morphometric relationships until I built
