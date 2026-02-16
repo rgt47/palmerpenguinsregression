@@ -95,7 +95,7 @@ and model selection as it did about penguins.
 I am documenting my learning process here. If you spot
 errors or have better approaches, please let me know.
 
-![Antarctic research landscape](media/images/ambiance1.jpg){.img-fluid}
+![](media/images/r-logo.png){.img-fluid width=30% fig-align="center"}
 
 *Setting the scene for Antarctic data exploration.*
 
