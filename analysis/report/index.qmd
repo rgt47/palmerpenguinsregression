@@ -9,11 +9,11 @@ document-type: "blog"
 draft: false
 categories: [r, palmer-penguins, regression, data-visualization]
 description: >
-  I did not really know how much species identity
-  shapes morphometric relationships until I built
-  regression models on the Palmer Penguins dataset
-  and watched Simpson's Paradox reverse a correlation
-  right in front of me.
+  Regression models on the Palmer Penguins dataset
+  reveal how much species identity shapes morphometric
+  relationships. Simpson's Paradox emerges clearly,
+  reversing an apparent correlation once species is
+  accounted for.
 image: "media/images/hero.jpg"
 execute:
   echo: true
@@ -32,16 +32,14 @@ format:
 
 # Introduction
 
-I did not really know how dramatically a single
-confounding variable could flip a statistical
-relationship until I sat down with the Palmer Penguins
-dataset and tried to predict body mass from bill
-measurements. The overall correlation between bill
-depth and body mass looked negative, but once I
-separated the data by species, every single
-within-species relationship turned positive. That was
-my first direct encounter with Simpson's Paradox in
-real data.
+How dramatically can a single confounding variable flip
+a statistical relationship? The Palmer Penguins dataset
+provides a striking demonstration. When predicting body
+mass from bill measurements, the overall correlation
+between bill depth and body mass appears negative.
+However, separating the data by species reveals that
+every single within-species relationship is positive.
+This is Simpson's Paradox in action.
 
 The Palmer Penguins dataset, collected by Dr. Kristen
 Gorman at Palmer Station Antarctica, provides
@@ -53,29 +51,28 @@ reproductive success, and population dynamics, so
 accurate predictive models carry genuine conservation
 value (Gorman et al., 2014).
 
-This post walks through the full regression workflow I
-followed: from exploratory analysis to tidymodels
+This post walks through the full regression workflow:
+from exploratory analysis to tidymodels
 cross-validation, from simple linear regression to
-species-aware models with interaction terms. I found
-that the journey taught me as much about confounding
-and model selection as it did about penguins.
+species-aware models with interaction terms. The
+journey teaches as much about confounding and model
+selection as it does about penguins.
 
 ## Motivations
 
-- I wanted a concrete example of Simpson's Paradox
-  that I could see in scatter plots rather than just
-  read about in textbooks.
-- I was curious whether adding species as a covariate
-  would meaningfully improve a regression model or
-  just add complexity.
-- I needed practice with the tidymodels framework for
-  systematic model comparison and cross-validation.
-- I wanted to understand when interaction terms
-  justify their added complexity and when a simpler
-  additive model suffices.
-- I was interested in learning how to create
-  publication-quality coefficient plots and diagnostic
-  visualizations.
+- To provide a concrete example of Simpson's Paradox
+  visible in scatter plots rather than only in
+  textbooks.
+- To examine whether adding species as a covariate
+  meaningfully improves a regression model or just
+  adds complexity.
+- To practise the tidymodels framework for systematic
+  model comparison and cross-validation.
+- To understand when interaction terms justify their
+  added complexity and when a simpler additive model
+  suffices.
+- To create publication-quality coefficient plots and
+  diagnostic visualizations.
 
 ## Objectives
 
@@ -92,8 +89,8 @@ and model selection as it did about penguins.
    coefficient plots, partial regression plots, and
    diagnostic panels.
 
-I am documenting my learning process here. If you spot
-errors or have better approaches, please let me know.
+Errors and better approaches are welcome; see the
+Feedback section at the end.
 
 ![](media/images/r-logo.png){.img-fluid width=30% fig-align="center"}
 
@@ -149,17 +146,18 @@ straight line through a cloud of points, and the
 R-squared value tells you what fraction of the scatter
 that line explains.
 
-The key idea I found useful is that regression
-coefficients are conditional: they describe the
-relationship between a predictor and the response
-*after accounting for everything else in the model*.
-That distinction matters enormously when confounding
-variables like species are in play.
+The key idea is that regression coefficients are
+conditional: they describe the relationship between a
+predictor and the response *after accounting for
+everything else in the model*. That distinction matters
+enormously when confounding variables like species are
+in play.
 
 # Getting Started: Initial Exploration
 
-Before fitting any models, I explored the data to
-understand distributions and spot potential issues.
+Before fitting any models, an exploration of the data
+helps to understand distributions and spot potential
+issues.
 
 ```{r}
 data(penguins)
@@ -188,9 +186,8 @@ cat(
 
 ## Univariate Distributions
 
-I found that plotting histograms and boxplots
-side-by-side by species immediately reveals the
-structure in the data.
+Plotting histograms and boxplots side-by-side by
+species immediately reveals the structure in the data.
 
 ```{r}
 #| fig-width: 10
@@ -257,8 +254,8 @@ p4 <- ggplot(
 The distributions reveal clear species-level
 differences. Gentoo penguins exhibit the largest body
 mass and flipper length, followed by Chinstrap and
-Adelie. These patterns told me early on that any
-predictive model should account for species identity.
+Adelie. These patterns indicate early on that any predictive
+model should account for species identity.
 
 ## Correlation Analysis
 
@@ -301,11 +298,10 @@ relationships in vertebrates.
 
 ## Simpson's Paradox: A Cautionary Tale
 
-This is the finding that surprised me most. The
-overall correlation between bill depth and body mass
-appears negative, but within each species the
-relationship is positive. Pearl (2014) calls this
-Simpson's Paradox.
+This finding is perhaps the most striking. The overall
+correlation between bill depth and body mass appears
+negative, but within each species the relationship is
+positive. Pearl (2014) calls this Simpson's Paradox.
 
 ```{r}
 #| fig-width: 10
@@ -353,8 +349,8 @@ p_overall + p_species
 The reversal occurs because Gentoo penguins have
 larger bodies but shallower bills than Adelie
 penguins, and species acts as a confounding variable.
-I found this example more instructive than any
-textbook explanation of confounding I had encountered.
+This example proves more instructive than many textbook
+explanations of confounding.
 
 ## Species-Specific Patterns
 
@@ -383,15 +379,15 @@ ggpairs(
 
 ![Penguin research in progress](media/images/ambiance2.jpg){.img-fluid}
 
-*Midway through the analysis -- time for a closer
-look at the models.*
+*Midway through the analysis: time for a closer look
+at the models.*
 
 # Building a Model
 
 ## Simple Linear Regression
 
-I started with the simplest possible model: flipper
-length as the sole predictor, given its strong
+The analysis starts with the simplest possible model:
+flipper length as the sole predictor, given its strong
 correlation with body mass.
 
 ```{r}
@@ -417,8 +413,8 @@ cat(
 The simple model explains approximately 76% of the
 variance in body mass, with each millimeter increase
 in flipper length associated with a 49.7g increase in
-body mass. Not bad for one predictor, but I suspected
-species would matter.
+body mass. Not bad for one predictor; species likely
+matters as well.
 
 ## Multiple Linear Regression
 
@@ -439,14 +435,14 @@ print(round(vif_values, 2))
 ```
 
 The VIF values are all below 5, indicating that
-multicollinearity is not a serious concern. I found
-it reassuring to check this before adding more terms.
+multicollinearity is not a serious concern. Checking
+this before adding more terms is reassuring.
 
 ## Species-Aware Model
 
 Including species as a factor should improve
 predictions by accounting for the systematic
-differences I saw in the exploratory analysis:
+differences observed in the exploratory analysis:
 
 ```{r}
 model_species <- lm(
@@ -461,16 +457,16 @@ summary(model_species)
 This is where things got interesting. All morphometric
 coefficients changed in magnitude and direction when
 species was included, consistent with the Simpson's
-Paradox I observed earlier. Bill depth, which appeared
+Paradox observed earlier. Bill depth, which appeared
 to have a negative coefficient in the multiple
 regression, now shows a positive coefficient within
 the species-stratified framework.
 
 ## Interaction Effects
 
-I explored whether the relationships between
-morphometric variables and body mass differ across
-species:
+The next step explores whether the relationships
+between morphometric variables and body mass differ
+across species:
 
 ```{r}
 model_interactions <- lm(
@@ -487,8 +483,8 @@ anova(model_species, model_interactions)
 ## Making Predictions
 
 To see how the species-aware model performs in
-practice, I generated predictions with 95% prediction
-intervals:
+practice, the following code generates predictions with
+95% prediction intervals:
 
 ```{r}
 #| fig-width: 8
@@ -539,15 +535,15 @@ ggplot(
 ```
 
 The points cluster tightly around the identity line,
-and I was pleased to see that the model performs well
-across all three species rather than fitting one
-species at the expense of the others.
+and the model performs well across all three species
+rather than fitting one species at the expense of the
+others.
 
 # The tidymodels Approach
 
 Following the workflow demonstrated by Julia Silge in
-her TidyTuesday screencast on Palmer Penguins, I used
-the tidymodels framework for systematic model
+her TidyTuesday screencast on Palmer Penguins, the
+tidymodels framework provides systematic model
 comparison and validation.
 
 ## Data Splitting
@@ -588,9 +584,10 @@ penguin_recipe
 
 ## Model Specifications
 
-I compared linear regression with regularized
-regression (elastic net) to see whether penalizing
-coefficient size improves out-of-sample performance:
+The analysis compares linear regression with
+regularized regression (elastic net) to see whether
+penalizing coefficient size improves out-of-sample
+performance:
 
 ```{r}
 lm_spec <- linear_reg() |>
@@ -676,7 +673,7 @@ collect_metrics(final_fit)
 
 ## Residual Analysis
 
-I examined the species-aware linear model for
+The species-aware linear model is examined for
 assumption violations:
 
 ```{r}
@@ -720,11 +717,10 @@ cat(
 
 ## Things to Watch Out For
 
-1. **Simpson's Paradox is easy to miss.** I found
-   that pooling data across species produced
-   misleading coefficient signs. Always check
-   within-group relationships before interpreting
-   aggregate patterns.
+1. **Simpson's Paradox is easy to miss.** Pooling
+   data across species produced misleading coefficient
+   signs. Always check within-group relationships
+   before interpreting aggregate patterns.
 2. **VIF alone does not tell the full story.** Even
    with low VIF values, adding species flipped the
    sign of the bill depth coefficient.
@@ -929,9 +925,9 @@ model_comparison |>
 
 ### Technical Skills
 
-- I practised the full tidymodels pipeline: recipe
-  specification, workflow creation, cross-validation
-  with `vfold_cv()`, and hyperparameter tuning with
+- The tidymodels pipeline covers recipe specification,
+  workflow creation, cross-validation with
+  `vfold_cv()`, and hyperparameter tuning with
   `tune_grid()`.
 - The `broom` package (`tidy()`, `glance()`,
   `augment()`) made it straightforward to extract model
@@ -1002,20 +998,20 @@ explains 87% of the variance in penguin body mass with
 a prediction error of approximately 289 grams. That is
 a strong result for a model using only four predictors.
 
-What I learned personally is that confounding variables
-can completely reverse apparent relationships. The
-Simpson's Paradox demonstration was worth the entire
-exercise. I also gained confidence in the tidymodels
-workflow: the recipe-workflow-resample pattern felt
-systematic and reproducible once I understood the
-pieces.
+The key lesson is that confounding variables can
+completely reverse apparent relationships. The
+Simpson's Paradox demonstration illustrates this
+principle clearly. The tidymodels workflow, with its
+recipe-workflow-resample pattern, proves systematic
+and reproducible.
 
-If you are trying this yourself, my advice is to start
-with thorough exploratory analysis before fitting any
-models. The EDA phase revealed the species structure
-that turned out to be the single most important
-predictor, and it surfaced Simpson's Paradox before it
-could silently distort model coefficients.
+For analysts attempting similar work, the advice is
+to start with thorough exploratory analysis before
+fitting any models. The EDA phase revealed the
+species structure that turned out to be the single
+most important predictor, and it surfaced Simpson's
+Paradox before it could silently distort model
+coefficients.
 
 **Main takeaways:**
 
@@ -1083,22 +1079,9 @@ quarto render index.qmd
 sessionInfo()
 ```
 
-# Let's Connect
+# Feedback
 
-- **GitHub:** [rgt47](https://github.com/rgt47)
-- **Twitter/X:** [@rgt47](https://twitter.com/rgt47)
-- **LinkedIn:**
-  [Ronald Glenn Thomas](https://linkedin.com/in/rgthomaslab)
-- **Email:**
-  [rgtlab.org/contact](https://rgtlab.org/contact)
-
-I would enjoy hearing from you if:
-
-- You spot an error or a better approach to any of the
-  code in this post.
-- You have suggestions for topics you would like to see
-  covered.
-- You want to discuss R programming, data science, or
-  reproducible research.
-- You have questions about anything in this tutorial.
-- You just want to say hello and connect.
+Corrections, suggestions, and questions are welcome.
+Please open an issue or pull request on the
+[GitHub repository](https://github.com/mygit)
+or send an email to user@example.com.
