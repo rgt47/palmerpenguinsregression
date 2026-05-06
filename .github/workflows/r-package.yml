@@ -1,5 +1,25 @@
-# zzcollab r-package.yml v2.4.0
-name: R Package Check (Container)
+# Lockfile Validation v1.0 (Tier 1 only)
+#
+# This is a Quarto blog post, not an R package. The R-package
+# skeleton (DESCRIPTION, NAMESPACE, R/, tests/) is scaffolding
+# from zzcollab; the deliverable is the rendered HTML produced
+# by the companion blog-render.yml workflow.
+#
+# This workflow runs Tier 1 only: it restores the lockfile and
+# reports any inconsistency between renv.lock, DESCRIPTION, and
+# the source code's library() calls. R CMD check is intentionally
+# omitted because the project is not a package being shipped.
+#
+# blog-render.yml owns Tier 3 (the render check) and is path-
+# filtered to changes under analysis/report/, renv.lock, and
+# Dockerfile, so it does not fire on every push. This validate
+# workflow runs on every push and catches lockfile drift that
+# would otherwise go silent until the next render-relevant
+# change.
+#
+# See zzcollab/docs/ci-strategy-tiered-model.md for rationale.
+
+name: Lockfile Validation
 
 on:
   push:
@@ -8,68 +28,39 @@ on:
     branches: [ main, master ]
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    container: rocker/tidyverse:latest
-    env:
-      ZZCOLLAB_CONTAINER: "true"
-      CI_TOOLS_LIB: "/tmp/ci-tools"
 
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies
-        run: |
-          apt-get update && apt-get install -y jq libcurl4-openssl-dev libssl-dev libxml2-dev cmake
-
-      - name: Validate package files exist
-        run: |
-          test -f DESCRIPTION || { echo "Missing DESCRIPTION"; exit 1; }
-          test -f renv.lock || { echo "Missing renv.lock"; exit 1; }
-          echo "Package files validated"
-
-      - name: Cache renv packages
-        uses: actions/cache@v3
+      - uses: r-lib/actions/setup-r@v2
         with:
-          path: ~/.cache/R/renv
-          key: renv-${{ hashFiles('renv.lock') }}
-          restore-keys: |
-            renv-
+          use-public-rspm: true
 
-      - name: Install renv and restore project packages
-        run: |
-          Rscript -e "install.packages('renv', repos = 'https://cloud.r-project.org')"
-          Rscript -e "renv::restore(prompt = FALSE)"
+      - uses: r-lib/actions/setup-renv@v2
 
-      - name: Install CI tools to separate library
+      - name: Report renv status (fail on inconsistency)
+        shell: Rscript {0}
         run: |
-          mkdir -p $CI_TOOLS_LIB
-          Rscript -e "install.packages(c('rcmdcheck', 'testthat'),
-                                       lib = Sys.getenv('CI_TOOLS_LIB'),
-                                       repos = 'https://cloud.r-project.org')"
+          status <- renv::status()
+          if (!isTRUE(status$synchronized)) {
+            cat("\n",
+                "renv reports the project is not synchronized.\n",
+                "Run renv::snapshot() locally and commit ",
+                "the updated renv.lock.\n",
+                sep = "")
+            quit(status = 1)
+          }
+          cat("\nrenv: lockfile, library, and source are synchronized.\n")
 
-      - name: Run R CMD check
+      - name: zzrenvcheck audit (optional)
+        shell: Rscript {0}
         run: |
-          Rscript -e "
-            .libPaths(c(Sys.getenv('CI_TOOLS_LIB'), .libPaths()))
-            rcmdcheck::rcmdcheck(args = '--no-manual', error_on = 'error')
-          "
-
-      - name: Run tests
-        continue-on-error: true
-        run: |
-          Rscript -e "
-            .libPaths(c(Sys.getenv('CI_TOOLS_LIB'), .libPaths()))
-            if (dir.exists('tests/testthat')) {
-              testthat::test_local()
-            } else {
-              message('No tests/testthat directory found, skipping tests')
-            }
-          "
-
-      - name: Validate project structure
-        run: |
-          echo "✅ DESCRIPTION found"
-          test -d R && echo "✅ R/ directory found" || echo "⚠️  No R/ directory"
-          echo "✅ renv.lock found"
-          echo "✅ Project structure validated"
+          if (requireNamespace('zzrenvcheck', quietly = TRUE)) {
+            zzrenvcheck::check_packages()
+          } else {
+            cat('zzrenvcheck not installed; skipping audit.\n')
+          }
