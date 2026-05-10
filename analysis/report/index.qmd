@@ -92,7 +92,7 @@ selection as it does about penguins.
 Errors and better approaches are welcome; see the
 Feedback section at the end.
 
-![A clean workspace ready for data exploration.](media/images/placeholder-coffee-01.jpg){.img-fluid}
+![A clean workspace ready for data exploration.](media/images/ambiance1.jpg){.img-fluid}
 
 # Prerequisites and Setup
 
